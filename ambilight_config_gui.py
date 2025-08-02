@@ -158,8 +158,6 @@ class AmbilightConfigGUI:
         self.canvas.pack(pady=10)
         
         self.draw_rectangle()
-        # Remove click handler - we'll use a button instead
-        # self.canvas.bind("<Button-1>", self.on_canvas_click)
         self.canvas.bind("<Motion>", self.on_canvas_motion)
         
         # Add Configure button
@@ -174,13 +172,13 @@ class AmbilightConfigGUI:
         action_frame = ttk.Frame(config_frame)
         action_frame.pack(pady=20)
         
-        # Create the main Start/Stop button - larger and more prominent
-        self.start_stop_button = tk.Button(action_frame, text="🚀 Start Ambilight", 
+        # Create the main Start/Stop button
+        self.start_stop_button = tk.Button(action_frame, text="Start Ambilight", 
                                          command=self.toggle_ambilight,
-                                         font=("Arial", 14, "bold"),
+                                         font=("Arial", 12, "bold"),
                                          bg="#4CAF50", fg="white", 
                                          activebackground="#45a049", activeforeground="white",
-                                         padx=30, pady=15, relief="raised", bd=3)
+                                         padx=20, pady=10, relief="raised", bd=3)
         self.start_stop_button.pack()
         
         # Configuration display
@@ -1020,16 +1018,13 @@ LED_STRIP_FLOW = [
     
     def select_region_on_monitor(self, monitor):
         """Select capture region on the specified monitor"""
-        # Don't create a new root - use the existing one
-        print(f"Creating region selection window for monitor: {monitor}")
-        
         top = tk.Toplevel(self.root)
         top.geometry(f"{monitor['width']}x{monitor['height']}+{monitor['left']}+{monitor['top']}")
         top.overrideredirect(True)
         top.lift()
         top.attributes("-topmost", True)
-        top.attributes('-alpha', 0.3)  # Semi-transparent window
-        top.grab_set()  # Make modal
+        top.attributes('-alpha', 0.3)
+        top.grab_set()
         
         canvas = tk.Canvas(top, cursor="cross", width=monitor['width'], height=monitor['height'], 
                           highlightthickness=0, bg='black')
@@ -1041,7 +1036,6 @@ LED_STRIP_FLOW = [
         
         def on_button_press(event):
             nonlocal start_x, start_y, rect
-            print(f"Mouse press at: {event.x}, {event.y}")
             start_x, start_y = event.x, event.y
             rect = canvas.create_rectangle(start_x, start_y, start_x, start_y, outline='white', width=2)
         
@@ -1051,20 +1045,17 @@ LED_STRIP_FLOW = [
         
         def on_button_release(event):
             nonlocal selection_made
-            print(f"Mouse release at: {event.x}, {event.y}")
             x1 = min(start_x, event.x)
             y1 = min(start_y, event.y)
             x2 = max(start_x, event.x)
             y2 = max(start_y, event.y)
             canvas.delete(rect)
             region['coords'] = (x1 + monitor['left'], y1 + monitor['top'], x2 - x1, y2 - y1)
-            print(f"Region selected: {region['coords']}")
             selection_made = True
-            top.quit()  # Exit mainloop
+            top.quit()
         
         def on_escape(event):
             nonlocal selection_made
-            print("Escape pressed - canceling selection")
             selection_made = False
             top.quit()
         
@@ -1074,68 +1065,45 @@ LED_STRIP_FLOW = [
         top.bind("<Escape>", on_escape)
         canvas.focus_set()
         
-        # Add instruction text
         canvas.create_text(monitor['width']//2, 50, text="Drag to select capture region (ESC to cancel)", 
                           fill='white', font=("Arial", 16, "bold"))
         
-        print("Starting region selection mainloop...")
         top.mainloop()
-        
-        print("Region selection mainloop ended")
         top.destroy()
         
         if selection_made and 'coords' in region:
-            print(f"Returning region: {region['coords']}")
             return region['coords']
         else:
-            print("No region selected")
             return None
     
     def start_ambilight(self):
         """Start the ambilight effect"""
-        print("START_AMBILIGHT called!")
-        
         if not self.led_segments:
-            print("ERROR: No LED segments configured!")
             messagebox.showerror("Error", "Please configure LED segments first.")
             return
         
-        print(f"LED segments found: {len(self.led_segments)}")
-        for i, (edge_name, count, description, direction) in enumerate(self.led_segments):
-            print(f"  Segment {i+1}: {edge_name} -> {count} LEDs ({description}, {direction})")
-        
         if self.ambilight_running:
-            print("Ambilight already running!")
             messagebox.showinfo("Info", "Ambilight is already running.")
             return
         
         try:
-            print("Updating status to selecting monitor...")
             self.status_label.config(text="Status: Selecting monitor and region...")
-            # Update button to show "Selecting..." state
-            self.start_stop_button.config(text="⏳ Selecting Region...", bg="#FF9800", fg="white")
+            self.start_stop_button.config(text="Selecting Region...", bg="#FF9800", fg="white")
             self.start_stop_button.config(activebackground="#F57C00", activeforeground="white")
             self.start_stop_button.config(relief="flat", bd=2)
             self.root.update()
         except tk.TclError:
-            print("Widget was destroyed!")
-            return  # Widget was destroyed
+            return
         
-        print("Calling select_monitor_and_region...")
-        # Select monitor and region
         self.monitor_region = self.select_monitor_and_region()
-        print(f"Monitor region selected: {self.monitor_region}")
         
         if not self.monitor_region:
-            print("No monitor region selected!")
             try:
                 self.status_label.config(text="Status: Ready")
             except tk.TclError:
                 pass
             return
         
-        # CRITICAL FIX: Capture all tkinter variables before starting thread
-        print("Capturing configuration values...")
         self.config_snapshot = {
             'wled_ip': self.wled_ip.get(),
             'wled_port': self.wled_port.get(),
@@ -1147,23 +1115,20 @@ LED_STRIP_FLOW = [
             'smoothing_level': self.smoothing_level.get(),
             'edge_avg_percent': self.edge_avg_percent.get()
         }
-        print(f"Config snapshot: {self.config_snapshot}")
         
-        print("Setting ambilight_running = True and starting thread...")
         self.ambilight_running = True
         self.prev_led_colors = None
         self.ambilight_thread = threading.Thread(target=self.ambilight_worker, daemon=True)
         self.ambilight_thread.start()
-        print("Thread started!")
         
         try:
             self.status_label.config(text="Status: Ambilight running...")
-            self.start_stop_button.config(text="⚙️ Stop Ambilight", bg="#F44336", fg="white")
+            self.start_stop_button.config(text="Stop Ambilight", bg="#F44336", fg="white")
             self.start_stop_button.config(activebackground="#D32F2F", activeforeground="white")
             self.start_stop_button.config(relief="sunken", bd=5)
             self.start_stop_button.update()
         except tk.TclError:
-            pass  # Widget was destroyed
+            pass
     
     def stop_ambilight(self):
         """Stop the ambilight effect"""
@@ -1172,7 +1137,7 @@ LED_STRIP_FLOW = [
             self.ambilight_thread.join(timeout=1)
         try:
             self.status_label.config(text="Status: Stopped")
-            self.start_stop_button.config(text="🚀 Start Ambilight", bg="#4CAF50", fg="white")
+            self.start_stop_button.config(text="Start Ambilight", bg="#4CAF50", fg="white")
             self.start_stop_button.config(activebackground="#45a049", activeforeground="white")
             self.start_stop_button.config(relief="raised", bd=3)
             self.start_stop_button.update()
@@ -1180,14 +1145,13 @@ LED_STRIP_FLOW = [
             pass  # Widget was destroyed
     
     def enhance_color(self, rgb):
-        """Apply gamma correction and color boost - EXACT copy from working version"""
-        gamma = 1.0 + (self.config_snapshot['gamma_level'] / 10) * 3.0  # 1.0–4.0
-        boost = 1.0 + (self.config_snapshot['boost_level'] / 10) * 2.0  # 1.0–3.0
+        """Apply gamma correction and color boost"""
+        gamma = 1.0 + (self.config_snapshot['gamma_level'] / 10) * 3.0
+        boost = 1.0 + (self.config_snapshot['boost_level'] / 10) * 2.0
         
         rgb = np.array(rgb, dtype=float)
-        # Gamma correction: linearize, boost, then de-linearize
         rgb_lin = np.power(rgb / 255.0, gamma)
-        rgb_lin = np.clip(rgb_lin * boost, 0, 1)  # THIS WAS MISSING!
+        rgb_lin = np.clip(rgb_lin * boost, 0, 1)
         rgb = np.power(rgb_lin, 1/gamma) * 255
         return tuple(rgb.astype(int))
     
@@ -1330,43 +1294,22 @@ LED_STRIP_FLOW = [
         return edge_colors
     
     def get_led_colors_from_screen(self, img):
-        """Map screen colors to LED positions - SIMPLIFIED like working version"""
-        # Initialize all LEDs to black
+        """Map screen colors to LED positions"""
         led_colors = [(0, 0, 0)] * self.config_snapshot['num_leds']
-        
-        # Current LED index (starting after the offset)  
         current_led = self.config_snapshot['led_start_offset']
         
-        # Debug: Print image shape and initial LED index
-        if hasattr(self, '_debug_counter') and self._debug_counter % 60 == 0:  # Every 2 seconds
-            print(f"Debug: Image shape: {img.shape}, Starting LED: {current_led}")
-        
-        # Process each edge in the flow order - SIMPLE mapping like working version
         for edge_name, count, description, direction in self.led_segments:
-            # Extract colors for this edge
             edge_colors = self.extract_edge_colors(img, edge_name, count)
             
-            # Debug: Print edge info occasionally
-            if hasattr(self, '_debug_counter') and self._debug_counter % 60 == 0:
-                sample_color = edge_colors[0] if edge_colors else (0, 0, 0)
-                print(f"Debug: {edge_name} -> {count} LEDs, sample color: {sample_color}, direction: {direction}")
-            
-            # Apply individual segment direction
             if direction == "reversed":
                 edge_colors = edge_colors[::-1]
             
-            # Assign colors to LEDs sequentially
             for i in range(count):
                 if current_led < self.config_snapshot['num_leds']:
                     led_colors[current_led] = edge_colors[i]
                     current_led += 1
                 else:
-                    break  # Don't exceed total LED count
-        
-        # Debug: Print final LED assignment info
-        if hasattr(self, '_debug_counter') and self._debug_counter % 60 == 0:
-            active_leds = sum(1 for r, g, b in led_colors if r > 0 or g > 0 or b > 0)
-            print(f"Debug: Final current_led: {current_led}, Active LEDs: {active_leds}")
+                    break
         
         return led_colors
     
@@ -1383,46 +1326,25 @@ LED_STRIP_FLOW = [
         return [tuple(map(int, c)) for c in smoothed]
     
     def send_wled_drgb(self, led_colors):
-        """Send colors to WLED via UDP using the exact same method as ambilight_sync.py"""
+        """Send colors to WLED via UDP"""
         try:
             packet = bytearray()
-            packet.append(2)  # DRGB protocol
-            packet.append(2)  # Timeout (short, for high FPS)
+            packet.append(2)
+            packet.append(2)
             
             for r, g, b in led_colors:
-                packet.extend([b, g, r])  # BGR order for WLED
+                packet.extend([b, g, r])
             
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(packet, (self.config_snapshot['wled_ip'], self.config_snapshot['wled_port']))
             sock.close()
             
-            # Debug output - reduced frequency
-            if hasattr(self, '_debug_counter'):
-                self._debug_counter += 1
-            else:
-                self._debug_counter = 1
-                
-            if self._debug_counter % 90 == 0:  # Debug every 3 seconds at 30fps
-                active_leds = sum(1 for r, g, b in led_colors if r > 0 or g > 0 or b > 0)
-                print(f"Sent packet: {len(packet)} bytes, {active_leds} active LEDs out of {len(led_colors)}")
-                if active_leds > 0:
-                    # Print first few active colors for debugging
-                    active_colors = [(r, g, b) for r, g, b in led_colors if r > 0 or g > 0 or b > 0][:5]
-                    print(f"Sample colors: {active_colors}")
-            
         except Exception as e:
-            print(f"Failed to send to WLED: {e}")
+            pass
     
     def ambilight_worker(self):
-        """Main ambilight processing loop - OPTIMIZED FOR 30+ FPS"""
-        print("AMBILIGHT WORKER STARTED!")
-        print(f"WLED IP: {self.config_snapshot['wled_ip']}, Port: {self.config_snapshot['wled_port']}")
-        print(f"Monitor region: {self.monitor_region}")
-        print(f"LED segments: {self.led_segments}")
-        print(f"Number of segments: {len(self.led_segments) if self.led_segments else 0}")
-        
+        """Main ambilight processing loop"""
         if not self.led_segments:
-            print("ERROR: No LED segments configured!")
             return
         
         try:
@@ -1430,17 +1352,10 @@ LED_STRIP_FLOW = [
             start_time = time.time()
             last_fps_print = start_time
             
-            print(f"Starting main loop with target 30+ FPS...")
-            
             while self.ambilight_running:
                 try:
                     frame_start = time.time()
                     
-                    # Only debug first few frames
-                    if frame_count < 3:
-                        print(f"Frame {frame_count}: Capturing screen...")
-                    
-                    # Capture screen
                     with mss.mss() as sct:
                         monitor = {
                             'top': self.monitor_region[1],
@@ -1450,54 +1365,35 @@ LED_STRIP_FLOW = [
                         }
                         img = np.array(sct.grab(monitor))
                     
-                    if frame_count < 3:
-                        print(f"Frame {frame_count}: Screen captured, shape: {img.shape}")
-                    
-                    # Process colors
                     led_colors = self.get_led_colors_from_screen(img)
-                    if frame_count < 3:
-                        print(f"Frame {frame_count}: Colors processed, {len(led_colors)} LEDs")
-                    
                     led_colors = self.smooth_colors(self.prev_led_colors, led_colors)
                     self.prev_led_colors = led_colors
                     
-                    # Send to WLED
                     self.send_wled_drgb(led_colors)
-                    if frame_count < 3:
-                        print(f"Frame {frame_count}: Sent to WLED")
                     
-                    # Update frame counter
                     frame_count += 1
                     
-                    # Print FPS every 3 seconds (instead of GUI update)
                     now = time.time()
                     if now - last_fps_print >= 3.0:
                         elapsed = now - start_time
                         fps = frame_count / elapsed
-                        print(f"FPS: {fps:.1f}, Frame: {frame_count}")
+                        print(f"\rFPS: {fps:.1f}, Frame: {frame_count}", end="")
                         last_fps_print = now
                     
-                    # Target ~30 FPS - calculate sleep time
                     frame_time = time.time() - frame_start
-                    target_frame_time = 1.0 / 30.0  # 33.33ms for 30 FPS
+                    target_frame_time = 1.0 / 30.0
                     sleep_time = max(0, target_frame_time - frame_time)
                     
                     if sleep_time > 0:
                         time.sleep(sleep_time)
                     
                 except Exception as e:
-                    print(f"Frame processing error: {e}")
-                    import traceback
-                    traceback.print_exc()
                     time.sleep(0.1)
                     
         except Exception as e:
-            print(f"Ambilight worker error: {e}")
-            import traceback
-            traceback.print_exc()
+            pass
         finally:
             self.ambilight_running = False
-            print("Ambilight worker stopped.")
 
     def toggle_ambilight(self):
         """Toggle ambilight on/off"""

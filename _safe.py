@@ -1,11 +1,15 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import json
+import math
 import socket
 import numpy as np
 import mss
 import time
 import cv2
+from PIL import ImageGrab
+from PIL import Image, ImageTk, ImageEnhance
+import platform
 import threading
 
 class AmbilightConfigGUI:
@@ -31,12 +35,11 @@ class AmbilightConfigGUI:
         self.ambilight_running = False
         self.ambilight_thread = None
         
-        # Effect settings - User-friendly percentage-based controls
-        self.brightness_percent = tk.IntVar(value=100)  # 0-100%
-        self.color_intensity_percent = tk.IntVar(value=80)  # 0-100%
-        self.smoothness_percent = tk.IntVar(value=60)  # 0-100%
-        self.responsiveness_percent = tk.IntVar(value=70)  # 0-100%
-        self.color_depth_percent = tk.IntVar(value=10)  # 0-100%
+        # Effect settings
+        self.gamma_level = tk.IntVar(value=5)
+        self.boost_level = tk.IntVar(value=2)
+        self.smoothing_level = tk.IntVar(value=6)
+        self.edge_avg_percent = tk.DoubleVar(value=0.1)
         
         # Runtime variables
         self.monitor_region = None
@@ -198,97 +201,38 @@ class AmbilightConfigGUI:
         
     def setup_effects_tab(self, parent):
         # Effects settings
-        effects_frame = ttk.LabelFrame(parent, text="Light Effect Settings")
+        effects_frame = ttk.LabelFrame(parent, text="Color & Effect Settings")
         effects_frame.pack(fill=tk.X, pady=10, padx=10)
         
-        # Add description label
-        desc_frame = ttk.Frame(effects_frame)
-        desc_frame.grid(row=0, column=0, columnspan=3, pady=(5, 15), padx=5, sticky=tk.W+tk.E)
-        ttk.Label(desc_frame, text="Adjust these settings to customize your ambilight experience:", 
-                 font=("Arial", 9, "italic")).pack()
+        # Gamma correction
+        ttk.Label(effects_frame, text="Gamma Level (0-10):").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        gamma_scale = ttk.Scale(effects_frame, from_=0, to=10, variable=self.gamma_level, orient=tk.HORIZONTAL, length=200)
+        gamma_scale.grid(row=0, column=1, padx=5, pady=5)
+        ttk.Label(effects_frame, textvariable=self.gamma_level).grid(row=0, column=2, padx=5)
         
-        # Brightness
-        ttk.Label(effects_frame, text="Overall Brightness:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
-        brightness_scale = ttk.Scale(effects_frame, from_=0, to=100, variable=self.brightness_percent, orient=tk.HORIZONTAL, length=200)
-        brightness_scale.grid(row=1, column=1, padx=5, pady=5)
-        brightness_label = ttk.Label(effects_frame, text="")
-        brightness_label.grid(row=1, column=2, padx=5)
+        # Color boost
+        ttk.Label(effects_frame, text="Color Boost (0-10):").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        boost_scale = ttk.Scale(effects_frame, from_=0, to=10, variable=self.boost_level, orient=tk.HORIZONTAL, length=200)
+        boost_scale.grid(row=1, column=1, padx=5, pady=5)
+        ttk.Label(effects_frame, textvariable=self.boost_level).grid(row=1, column=2, padx=5)
         
-        # Color Intensity
-        ttk.Label(effects_frame, text="Color Vibrancy:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
-        color_intensity_scale = ttk.Scale(effects_frame, from_=0, to=100, variable=self.color_intensity_percent, orient=tk.HORIZONTAL, length=200)
-        color_intensity_scale.grid(row=2, column=1, padx=5, pady=5)
-        color_intensity_label = ttk.Label(effects_frame, text="")
-        color_intensity_label.grid(row=2, column=2, padx=5)
+        # Smoothing
+        ttk.Label(effects_frame, text="Smoothing (0-10):").grid(row=2, column=0, sticky=tk.W, padx=5, pady=5)
+        smooth_scale = ttk.Scale(effects_frame, from_=0, to=10, variable=self.smoothing_level, orient=tk.HORIZONTAL, length=200)
+        smooth_scale.grid(row=2, column=1, padx=5, pady=5)
+        ttk.Label(effects_frame, textvariable=self.smoothing_level).grid(row=2, column=2, padx=5)
         
-        # Smoothness
-        ttk.Label(effects_frame, text="Transition Smoothness:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
-        smoothness_scale = ttk.Scale(effects_frame, from_=0, to=100, variable=self.smoothness_percent, orient=tk.HORIZONTAL, length=200)
-        smoothness_scale.grid(row=3, column=1, padx=5, pady=5)
-        smoothness_label = ttk.Label(effects_frame, text="")
-        smoothness_label.grid(row=3, column=2, padx=5)
+        # Edge sampling percentage
+        ttk.Label(effects_frame, text="Edge Sample % (0.05-0.5):").grid(row=3, column=0, sticky=tk.W, padx=5, pady=5)
+        edge_scale = ttk.Scale(effects_frame, from_=0.05, to=0.5, variable=self.edge_avg_percent, orient=tk.HORIZONTAL, length=200)
+        edge_scale.grid(row=3, column=1, padx=5, pady=5)
+        edge_label = ttk.Label(effects_frame, text="")
+        edge_label.grid(row=3, column=2, padx=5)
         
-        # Responsiveness
-        ttk.Label(effects_frame, text="Response Speed:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=5)
-        responsiveness_scale = ttk.Scale(effects_frame, from_=0, to=100, variable=self.responsiveness_percent, orient=tk.HORIZONTAL, length=200)
-        responsiveness_scale.grid(row=4, column=1, padx=5, pady=5)
-        responsiveness_label = ttk.Label(effects_frame, text="")
-        responsiveness_label.grid(row=4, column=2, padx=5)
-        
-        # Color Depth
-        ttk.Label(effects_frame, text="Color Sampling Area:").grid(row=5, column=0, sticky=tk.W, padx=5, pady=5)
-        color_depth_scale = ttk.Scale(effects_frame, from_=5, to=50, variable=self.color_depth_percent, orient=tk.HORIZONTAL, length=200)
-        color_depth_scale.grid(row=5, column=1, padx=5, pady=5)
-        color_depth_label = ttk.Label(effects_frame, text="")
-        color_depth_label.grid(row=5, column=2, padx=5)
-        
-        # Real-time update functions
-        def update_brightness_label(*args):
-            value = self.brightness_percent.get()
-            brightness_label.config(text=f"{value}% - {'Dim' if value < 30 else 'Normal' if value < 80 else 'Bright'}")
-        
-        def update_color_intensity_label(*args):
-            value = self.color_intensity_percent.get()
-            color_intensity_label.config(text=f"{value}% - {'Muted' if value < 30 else 'Natural' if value < 80 else 'Vivid'}")
-        
-        def update_smoothness_label(*args):
-            value = self.smoothness_percent.get()
-            smoothness_label.config(text=f"{value}% - {'Instant' if value < 30 else 'Balanced' if value < 80 else 'Smooth'}")
-        
-        def update_responsiveness_label(*args):
-            value = self.responsiveness_percent.get()
-            responsiveness_label.config(text=f"{value}% - {'Slow' if value < 30 else 'Medium' if value < 80 else 'Fast'}")
-        
-        def update_color_depth_label(*args):
-            value = self.color_depth_percent.get()
-            color_depth_label.config(text=f"{value}% - {'Precise' if value < 20 else 'Balanced' if value < 35 else 'Wide'}")
-        
-        # Bind real-time updates
-        self.brightness_percent.trace('w', update_brightness_label)
-        self.color_intensity_percent.trace('w', update_color_intensity_label)
-        self.smoothness_percent.trace('w', update_smoothness_label)
-        self.responsiveness_percent.trace('w', update_responsiveness_label)
-        self.color_depth_percent.trace('w', update_color_depth_label)
-        
-        # Initialize labels
-        update_brightness_label()
-        update_color_intensity_label()
-        update_smoothness_label()
-        update_responsiveness_label()
-        update_color_depth_label()
-        
-        # Help text frame
-        help_frame = ttk.LabelFrame(parent, text="Settings Guide")
-        help_frame.pack(fill=tk.X, pady=10, padx=10)
-        
-        help_text = """• Overall Brightness: Controls how bright the LEDs appear
-• Color Vibrancy: How intense and saturated colors are
-• Transition Smoothness: How gradually colors change (higher = less flicker)
-• Response Speed: How quickly lights react to screen changes
-• Color Sampling Area: How much of screen edge to analyze for colors"""
-        
-        ttk.Label(help_frame, text=help_text, justify=tk.LEFT, 
-                 font=("Arial", 9)).pack(padx=10, pady=10, anchor=tk.W)
+        def update_edge_label(*args):
+            edge_label.config(text=f"{self.edge_avg_percent.get():.2f}")
+        self.edge_avg_percent.trace('w', update_edge_label)
+        update_edge_label()
         
         # Status frame
         status_frame = ttk.LabelFrame(parent, text="Status")
@@ -926,11 +870,10 @@ LED_STRIP_FLOW = [
                 "traversal_direction": self.traversal_direction.get(),
                 "starting_position": self.starting_position,
                 "led_segments": self.led_segments,
-                "brightness_percent": self.brightness_percent.get(),
-                "color_intensity_percent": self.color_intensity_percent.get(),
-                "smoothness_percent": self.smoothness_percent.get(),
-                "responsiveness_percent": self.responsiveness_percent.get(),
-                "color_depth_percent": self.color_depth_percent.get()
+                "gamma_level": self.gamma_level.get(),
+                "boost_level": self.boost_level.get(),
+                "smoothing_level": self.smoothing_level.get(),
+                "edge_avg_percent": self.edge_avg_percent.get()
             }
             
             with open(filename, 'w') as f:
@@ -959,11 +902,10 @@ LED_STRIP_FLOW = [
                 self.led_segments = config["led_segments"]
                 
                 # Load effect settings if available
-                self.brightness_percent.set(config.get("brightness_percent", 100))
-                self.color_intensity_percent.set(config.get("color_intensity_percent", 80))
-                self.smoothness_percent.set(config.get("smoothness_percent", 60))
-                self.responsiveness_percent.set(config.get("responsiveness_percent", 70))
-                self.color_depth_percent.set(config.get("color_depth_percent", 10))
+                self.gamma_level.set(config.get("gamma_level", 5))
+                self.boost_level.set(config.get("boost_level", 2))
+                self.smoothing_level.set(config.get("smoothing_level", 6))
+                self.edge_avg_percent.set(config.get("edge_avg_percent", 0.1))
                 
                 # Update the configuration display
                 self.update_config_display()
@@ -1134,19 +1076,6 @@ LED_STRIP_FLOW = [
         else:
             return None
     
-    def update_config_snapshot_if_running(self):
-        """Update config snapshot with current effect values if ambilight is running"""
-        if self.ambilight_running and hasattr(self, 'config_snapshot'):
-            self.config_snapshot['brightness_percent'] = self.brightness_percent.get()
-            self.config_snapshot['color_intensity_percent'] = self.color_intensity_percent.get()
-            self.config_snapshot['smoothness_percent'] = self.smoothness_percent.get()
-            self.config_snapshot['responsiveness_percent'] = self.responsiveness_percent.get()
-            self.config_snapshot['color_depth_percent'] = self.color_depth_percent.get()
-        
-        # Schedule next update in 100ms for real-time responsiveness
-        if self.ambilight_running:
-            self.root.after(100, self.update_config_snapshot_if_running)
-
     def start_ambilight(self):
         """Start the ambilight effect"""
         if not self.led_segments:
@@ -1181,20 +1110,16 @@ LED_STRIP_FLOW = [
             'num_leds': self.num_leds.get(),
             'led_start_offset': self.led_start_offset.get(),
             'traversal_direction': self.traversal_direction.get(),
-            'brightness_percent': self.brightness_percent.get(),
-            'color_intensity_percent': self.color_intensity_percent.get(),
-            'smoothness_percent': self.smoothness_percent.get(),
-            'responsiveness_percent': self.responsiveness_percent.get(),
-            'color_depth_percent': self.color_depth_percent.get()
+            'gamma_level': self.gamma_level.get(),
+            'boost_level': self.boost_level.get(),
+            'smoothing_level': self.smoothing_level.get(),
+            'edge_avg_percent': self.edge_avg_percent.get()
         }
         
         self.ambilight_running = True
         self.prev_led_colors = None
         self.ambilight_thread = threading.Thread(target=self.ambilight_worker, daemon=True)
         self.ambilight_thread.start()
-        
-        # Start periodic effect updates from GUI thread
-        self.root.after(100, self.update_config_snapshot_if_running)
         
         try:
             self.status_label.config(text="Status: Ambilight running...")
@@ -1220,22 +1145,14 @@ LED_STRIP_FLOW = [
             pass  # Widget was destroyed
     
     def enhance_color(self, rgb):
-        """Apply brightness and color intensity adjustments"""
-        brightness = self.config_snapshot['brightness_percent'] / 100.0
-        color_intensity = self.config_snapshot['color_intensity_percent'] / 100.0
+        """Apply gamma correction and color boost"""
+        gamma = 1.0 + (self.config_snapshot['gamma_level'] / 10) * 3.0
+        boost = 1.0 + (self.config_snapshot['boost_level'] / 10) * 2.0
         
         rgb = np.array(rgb, dtype=float)
-        
-        # Apply color intensity (saturation boost)
-        if color_intensity != 1.0:
-            # Convert to HSV for saturation adjustment
-            hsv = cv2.cvtColor(rgb.reshape(1, 1, 3).astype(np.uint8), cv2.COLOR_RGB2HSV).astype(float)
-            hsv[0, 0, 1] = np.clip(hsv[0, 0, 1] * color_intensity, 0, 255)
-            rgb = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2RGB)[0, 0]
-        
-        # Apply brightness
-        rgb = np.clip(rgb * brightness, 0, 255)
-        
+        rgb_lin = np.power(rgb / 255.0, gamma)
+        rgb_lin = np.clip(rgb_lin * boost, 0, 1)
+        rgb = np.power(rgb_lin, 1/gamma) * 255
         return tuple(rgb.astype(int))
     
     def extract_edge_colors(self, img, edge_type, count):
@@ -1243,11 +1160,12 @@ LED_STRIP_FLOW = [
         h, w = img.shape[:2]
         edge_colors = []
         
-        # Use color_depth_percent for sampling area size
+        # Use EDGE_AVG_PERCENT for the width/height of the strip sampled for each LED
+        # THIS IS THE KEY FIX - different logic for top/bottom vs left/right
         if edge_type in ('top', 'bottom'):
-            avg_size = max(1, int((self.config_snapshot['color_depth_percent'] / 100.0) * h))
+            avg_size = max(1, int(self.config_snapshot['edge_avg_percent'] * h))
         else:
-            avg_size = max(1, int((self.config_snapshot['color_depth_percent'] / 100.0) * w))
+            avg_size = max(1, int(self.config_snapshot['edge_avg_percent'] * w))
             
         # For falloff, create weights (closer to edge = higher weight)
         falloff_exp = 0.01 + (0 / 10) * (0.25 - 0.01)  # Use same as working version
@@ -1396,20 +1314,15 @@ LED_STRIP_FLOW = [
         return led_colors
     
     def smooth_colors(self, prev, curr):
-        """Apply color smoothing based on user settings"""
+        """Apply exponential moving average smoothing"""
         if prev is None:
             return curr
         
-        # Convert percentage to smoothing factor (0-95% max for stability)
-        smoothness = min(self.config_snapshot['smoothness_percent'] / 100.0 * 0.95, 0.95)
-        
-        # Responsiveness affects how much smoothing is applied
-        responsiveness = self.config_snapshot['responsiveness_percent'] / 100.0
-        effective_smoothness = smoothness * (1 - responsiveness * 0.3)  # Higher responsiveness = less smoothing
+        smoothing = min(max(self.config_snapshot['smoothing_level'] / 10 * 0.95, 0), 0.95)
         
         arr_prev = np.array(prev, dtype=float)
         arr_curr = np.array(curr, dtype=float)
-        smoothed = arr_prev * effective_smoothness + arr_curr * (1 - effective_smoothness)
+        smoothed = arr_prev * smoothing + arr_curr * (1 - smoothing)
         return [tuple(map(int, c)) for c in smoothed]
     
     def send_wled_drgb(self, led_colors):
